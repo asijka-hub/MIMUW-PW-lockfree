@@ -7,6 +7,29 @@
 #define MAX_THREADS 128
 static const int RETIRED_THRESHOLD = MAX_THREADS;
 
+typedef uint64_t ull;
+
+
+#ifdef DEBUG
+    static bool debug = true;
+#else
+    static bool debug = false;
+#endif
+
+#define DEBUG(expression) do { \
+    if (debug) { \
+        expression; \
+    } \
+} while(0)
+
+#define CHECK_MALLOC(ptr) \
+    do { \
+        if ((ptr) == NULL) { \
+            fprintf(stderr, "Memory allocation failed at %s:%d\n", __FILE__, __LINE__); \
+            exit(EXIT_FAILURE); \
+        } \
+    } while (0)
+
 struct HazardPointer {
     _Atomic(void*) pointer[MAX_THREADS];
     // TODO
