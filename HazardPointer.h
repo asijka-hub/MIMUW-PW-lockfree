@@ -3,6 +3,7 @@
 #include <stdatomic.h>
 #include <stddef.h>
 #include <stdint.h>
+#include <stdbool.h>
 
 #define MAX_THREADS 128
 static const int RETIRED_THRESHOLD = MAX_THREADS;
