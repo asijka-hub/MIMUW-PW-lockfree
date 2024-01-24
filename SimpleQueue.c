@@ -4,8 +4,6 @@
 
 #include "SimpleQueue.h"
 
-// TODO mozna poprawic teraz zawsze robimy mallocki a moza przesuwac same head i tail
-
 struct SimpleQueueNode;
 typedef struct SimpleQueueNode SimpleQueueNode;
 
@@ -100,8 +98,12 @@ Value SimpleQueue_pop(SimpleQueue* queue)
 
 bool SimpleQueue_is_empty(SimpleQueue* queue)
 {
-    pthread_mutex_lock(&queue->head_mtx);
-    bool is_empty = (atomic_load(&queue->head->next) == NULL);
-    pthread_mutex_unlock(&queue->head_mtx);
-    return is_empty;
+//    pthread_mutex_lock(&queue->head_mtx);
+//    bool is_empty = queue->head == queue->tail;
+//    pthread_mutex_unlock(&queue->head_mtx);
+
+    // TODO porownac obie wersie
+
+    SimpleQueueNode* node = atomic_load(&queue->head->next);
+    return node == NULL;
 }
