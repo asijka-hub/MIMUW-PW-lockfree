@@ -38,7 +38,7 @@ bool node_empty(RingsQueueNode* node) {
 }
 
 /// this function assumes that buff is not FULL!
-void node_add(RingsQueueNode* const node, const Value value) {
+void node_add_item(RingsQueueNode* const node, const Value value) {
     DEBUG(assert(!node_full(node)));
 
     RingBuffer* const buff = node->buff;
@@ -47,7 +47,7 @@ void node_add(RingsQueueNode* const node, const Value value) {
 }
 
 /// this function assumes that buff is not EMPTY!
-Value node_remove(RingsQueueNode* const node) {
+Value node_remove_item(RingsQueueNode* const node) {
     DEBUG(assert(!node_empty(node)));
 
     RingBuffer* const buff = node->buff;
@@ -106,34 +106,57 @@ void RingsQueue_push(RingsQueue* queue, Value item)
 {
     pthread_mutex_lock(&queue->push_mtx);
 
-    if (node_full(queue->tail)) {
-        // adding new element
+    RingsQueueNode* const tail = queue->tail;
+
+    if (node_full(tail)) {
+        // adding new node
+        // and inserting value into it
+
+        RingsQueueNode* const new_node = RingsQueueNode_new();
+        node_add_item(new_node, item);
+
+        atomic_store(&tail->next, new_node);
+        queue->tail = new_node;
     } else {
-
+        // inserting item into existing
+        node_add_item(tail, item);
     }
-
-
-    RingsNode->next = NULL;
-    RingsNode->value = value;
-
-    queue->tail->next = RingsNode;
-    queue->tail = RingsNode;
-
-    RingsQueueNode* node = malloc(sizeof(RingsQueueNode));
-    CHECK_MALLOC(node);
 
     pthread_mutex_unlock(&queue->push_mtx);
 }
 
 Value RingsQueue_pop(RingsQueue* queue)
 {
-    return EMPTY_VALUE; // TODO
+    if (RingsQueue_is_empty(queue)) return EMPTY_VALUE;
+
+    pthread_mutex_lock(&queue->pop_mtx);
+
+    RingsQueueNode* const head = queue->head;
+
+    Value ret;
+
+    if (node_empty(head)) {
+        // removing node and taking return value from next
+
+        RingsQueueNode* new_head = atomic_load(&head->next);
+        ret = node_remove_item(new_head);
+
+        queue->head = new_head;
+        free(head);
+    } else {
+        // removing one element from head
+        ret = node_remove_item(head);
+    }
+
+    pthread_mutex_unlock(&queue->pop_mtx);
+
+    return ret;
 }
 
 bool RingsQueue_is_empty(RingsQueue* queue)
 {
-    pthread_mutex_lock(&queue->head_mtx);
-    bool is_empty = (atomic_load(&queue->head->next) == NULL);
-    pthread_mutex_unlock(&queue->head_mtx);
+    pthread_mutex_lock(&queue->pop_mtx);
+    bool is_empty = queue->head == queue->tail && node_empty(queue->head);
+    pthread_mutex_unlock(&queue->pop_mtx);
     return is_empty;
 }
