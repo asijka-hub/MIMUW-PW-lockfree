@@ -44,6 +44,8 @@ void node_add_item(RingsQueueNode* const node, const Value value) {
     RingBuffer* const buff = node->buff;
     buff->data[buff->tail] = value;
     buff->tail = (buff->tail + 1 ) % RING_SIZE;
+    ull push_n = atomic_load(&node->push_idx);
+    atomic_store(&node->push_idx, push_n + 1);
 }
 
 /// this function assumes that buff is not EMPTY!
@@ -53,6 +55,8 @@ Value node_remove_item(RingsQueueNode* const node) {
     RingBuffer* const buff = node->buff;
     Value value = buff->data[buff->head];
     buff->head = (buff->head + 1) % RING_SIZE;
+    ull pop_n = atomic_load(&node->pop_idx);
+    atomic_store(&node->pop_idx, pop_n + 1);
     return value;
 }
 
@@ -119,6 +123,8 @@ void RingsQueue_push(RingsQueue* queue, Value item)
         queue->tail = new_node;
     } else {
         // inserting item into existing
+        printf("inserting item\n");
+
         node_add_item(tail, item);
     }
 
@@ -145,6 +151,8 @@ Value RingsQueue_pop(RingsQueue* queue)
         free(head);
     } else {
         // removing one element from head
+        printf("removing one item from existing\n");
+
         ret = node_remove_item(head);
     }
 
