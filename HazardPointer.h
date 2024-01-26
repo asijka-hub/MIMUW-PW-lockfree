@@ -9,7 +9,7 @@
 static const int RETIRED_THRESHOLD = MAX_THREADS;
 
 typedef uint64_t ull;
-
+typedef uint8_t u8;
 
 #ifdef DEBUG
     static bool debug = true;
@@ -31,8 +31,22 @@ typedef uint64_t ull;
         } \
     } while (0)
 
+//--------------------------------------------------------------------
+
+
+
+
+
+
+
+
+
+//--------------------------------------------------------------------
+
 struct HazardPointer {
     _Atomic(void*) pointer[MAX_THREADS];
+    void* retired[MAX_THREADS][MAX_THREADS];
+    u8 retired_n[MAX_THREADS];
     // TODO
 };
 typedef struct HazardPointer HazardPointer;

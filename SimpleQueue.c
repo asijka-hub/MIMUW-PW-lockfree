@@ -1,7 +1,9 @@
 #include <malloc.h>
 #include <pthread.h>
 #include <stdatomic.h>
+#include <assert.h>
 
+#include "test/err.h"
 #include "SimpleQueue.h"
 
 struct SimpleQueueNode;
@@ -15,6 +17,9 @@ struct SimpleQueueNode {
 SimpleQueueNode* SimpleQueueNode_new(Value item)
 {
     SimpleQueueNode* node = (SimpleQueueNode*)malloc(sizeof(SimpleQueueNode));
+    if (node == NULL) {
+        exit(EXIT_FAILURE);
+    }
     atomic_init(&node->next, NULL);
     node->item = item;
     return node;
@@ -39,8 +44,8 @@ SimpleQueue* SimpleQueue_new(void)
     queue->head = dummy;
     queue->tail = dummy;
 
-    pthread_mutex_init(&queue->head_mtx, NULL);
-    pthread_mutex_init(&queue->tail_mtx, NULL);
+    ASSERT_ZERO(pthread_mutex_init(&queue->head_mtx, NULL));
+    ASSERT_ZERO(pthread_mutex_init(&queue->tail_mtx, NULL));
 
     return queue;
 }
@@ -63,20 +68,30 @@ void SimpleQueue_delete(SimpleQueue* queue)
 void SimpleQueue_push(SimpleQueue* queue, Value item)
 {
     SimpleQueueNode* node = SimpleQueueNode_new(item);
+    assert(node != NULL);
+    assert(queue != NULL);
 
-    pthread_mutex_lock(&queue->tail_mtx);
+    ASSERT_ZERO(pthread_mutex_lock(&queue->tail_mtx));
 
     atomic_store(&queue->tail->next, node);
     queue->tail = node;
 
-    pthread_mutex_unlock(&queue->tail_mtx );
+    ASSERT_ZERO(pthread_mutex_unlock(&queue->tail_mtx ));
 }
 
 Value SimpleQueue_pop(SimpleQueue* queue)
 {
-    pthread_mutex_lock(&queue->head_mtx);
+    assert(queue != NULL);
+    printf("t0\n");
+
+    ASSERT_ZERO(pthread_mutex_lock(&queue->head_mtx));
+
+    printf("t1\n");
 
     SimpleQueueNode* head = queue->head;
+
+    printf("t2\n");
+
 
     if (atomic_load(&head->next) == NULL) {
         // queue is empty
@@ -84,14 +99,24 @@ Value SimpleQueue_pop(SimpleQueue* queue)
         return EMPTY_VALUE;
     }
 
-    SimpleQueueNode* new_head = atomic_load(&head->next);
+    SimpleQueueNode* new_head = atomic_load(&head->next); // TODO czy to nie ma subtelnego bugga i lininku 79 i 87 powinny byc polaczane
+    // https://en.wikipedia.org/wiki/Hazard_pointer#:~:text=of%20the%20form-,Node,-*%20currentNode%20%3D
+    // chyba nie bo mamy niezmiennik ze head nigdy nie jest NULLEM
     Value value = new_head->item;
+
+    printf("t3\n");
+
 
     queue->head = new_head;
     queue->head->item = EMPTY_VALUE;
-    pthread_mutex_unlock(&queue->head_mtx);
+
+    printf("t4\n");
+
+    ASSERT_ZERO(pthread_mutex_unlock(&queue->head_mtx));
+    printf("t5\n");
 
     free(head);
+    printf("t6\n");
 
     return value;
 }

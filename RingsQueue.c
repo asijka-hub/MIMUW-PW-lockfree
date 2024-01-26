@@ -102,7 +102,17 @@ RingsQueue* RingsQueue_new(void)
 
 void RingsQueue_delete(RingsQueue* queue)
 {
-    // TODO
+    RingsQueueNode* current = queue->head;
+    while (current != NULL) {
+        RingsQueueNode * next = atomic_load(&current->next);
+        free(current->buff);
+        free(current);
+        current = next;
+    }
+
+    pthread_mutex_destroy(&queue->push_mtx);
+    pthread_mutex_destroy(&queue->pop_mtx);
+
     free(queue);
 }
 
@@ -123,7 +133,7 @@ void RingsQueue_push(RingsQueue* queue, Value item)
         queue->tail = new_node;
     } else {
         // inserting item into existing
-        printf("inserting item\n");
+//        printf("inserting item\n");
 
         node_add_item(tail, item);
     }
@@ -151,7 +161,7 @@ Value RingsQueue_pop(RingsQueue* queue)
         free(head);
     } else {
         // removing one element from head
-        printf("removing one item from existing\n");
+//        printf("removing one item from existing\n");
 
         ret = node_remove_item(head);
     }
