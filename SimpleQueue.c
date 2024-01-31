@@ -17,9 +17,9 @@ struct SimpleQueueNode {
 SimpleQueueNode* SimpleQueueNode_new(Value item)
 {
     SimpleQueueNode* node = (SimpleQueueNode*)malloc(sizeof(SimpleQueueNode));
-    if (node == NULL) {
-        exit(EXIT_FAILURE);
-    }
+//    if (node == NULL) {
+//        exit(EXIT_FAILURE);
+//    }
     atomic_init(&node->next, NULL);
     node->item = item;
     return node;
@@ -53,8 +53,8 @@ SimpleQueue* SimpleQueue_new(void)
 void SimpleQueue_delete(SimpleQueue* queue)
 {
     SimpleQueueNode* current = queue->head;
-    while (current != NULL) {
-        SimpleQueueNode* next = atomic_load(&current->next);
+    while (current) {
+        SimpleQueueNode* next = atomic_load(&current->next); //TODO moze atomic nie potrzebne
         free(current);
         current = next;
     }
@@ -76,25 +76,20 @@ void SimpleQueue_push(SimpleQueue* queue, Value item)
     atomic_store(&queue->tail->next, node);
     queue->tail = node;
 
-    ASSERT_ZERO(pthread_mutex_unlock(&queue->tail_mtx ));
+    ASSERT_ZERO(pthread_mutex_unlock(&queue->tail_mtx));
 }
 
 Value SimpleQueue_pop(SimpleQueue* queue)
 {
     assert(queue != NULL);
-    printf("t0\n");
 
     ASSERT_ZERO(pthread_mutex_lock(&queue->head_mtx));
 
-    printf("t1\n");
-
     SimpleQueueNode* head = queue->head;
-
-    printf("t2\n");
-
 
     if (atomic_load(&head->next) == NULL) {
         // queue is empty
+//        printf("next was empty\n");
         pthread_mutex_unlock(&queue->head_mtx);
         return EMPTY_VALUE;
     }
@@ -104,19 +99,12 @@ Value SimpleQueue_pop(SimpleQueue* queue)
     // chyba nie bo mamy niezmiennik ze head nigdy nie jest NULLEM
     Value value = new_head->item;
 
-    printf("t3\n");
-
-
     queue->head = new_head;
     queue->head->item = EMPTY_VALUE;
 
-    printf("t4\n");
-
     ASSERT_ZERO(pthread_mutex_unlock(&queue->head_mtx));
-    printf("t5\n");
 
     free(head);
-    printf("t6\n");
 
     return value;
 }
@@ -126,9 +114,9 @@ bool SimpleQueue_is_empty(SimpleQueue* queue)
 //    pthread_mutex_lock(&queue->head_mtx);
 //    bool is_empty = queue->head == queue->tail;
 //    pthread_mutex_unlock(&queue->head_mtx);
+//    return is_empty;
 
     // TODO porownac obie wersie
-
     SimpleQueueNode* node = atomic_load(&queue->head->next);
     return node == NULL;
 }

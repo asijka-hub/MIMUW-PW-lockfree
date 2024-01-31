@@ -7,14 +7,16 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
-
+#include "err.h"
 
 void* reader_main(void* data)
 {
     printf("reader\n");
     sleep(1);
 
-    SimpleQueue* queue = data;
+    SimpleQueue* queue = *(SimpleQueue**)data;
+
+    assert(SimpleQueue_is_empty(queue));
 
     for (int i = 0; i < 10; ++i) {
         SimpleQueue_push(queue, i);
@@ -22,6 +24,8 @@ void* reader_main(void* data)
     }
 
     printf("reader END\n");
+
+    return 0;
 }
 
 void* writer_main(void* data)
@@ -30,23 +34,25 @@ void* writer_main(void* data)
     sleep(1);
 
 
-//    Value arr[10];
-//    SimpleQueue* queue = data;
-//
-//    for (int i = 0; i < 10; ++i) {
-//        arr[i] = SimpleQueue_pop(queue);
-//        printf("poped: %ld\n", arr[i]);
-//    }
-//
-//    sleep(1);
-//
-//    printf("recieved: ");
-//    for (int i = 0; i < 10; ++i) {
-//        printf("%ld ", arr[i]);
-//    }
-//    printf("\n");
+    Value arr[10];
+    SimpleQueue* queue = *(SimpleQueue**)data;
+
+    for (int i = 0; i < 10; ++i) {
+        arr[i] = SimpleQueue_pop(queue);
+        printf("poped: %ld\n", arr[i]);
+    }
+
+    sleep(1);
+
+    printf("recieved: ");
+    for (int i = 0; i < 10; ++i) {
+        printf("%ld ", arr[i]);
+    }
+    printf("\n");
 
     printf("writer END\n");
+
+    return 0;
 }
 
 int main() {
@@ -58,11 +64,15 @@ int main() {
 
     pthread_t threads[2];
 
-    pthread_create(&threads[0], NULL, reader_main, &simpleQueue);
-    pthread_create(&threads[1], NULL, writer_main, &simpleQueue);
+    pthread_create(&threads[0], NULL, reader_main, (void*)&simpleQueue);
+    pthread_create(&threads[1], NULL, writer_main, (void*)&simpleQueue);
 
     for (int i = 0; i < 2; i++)
-        pthread_join(threads[i], NULL);
+        ASSERT_ZERO(pthread_join(threads[i], NULL));
 
     printf("main ended\n");
+
+    SimpleQueue_delete(simpleQueue);
+
+    return 0;
 }

@@ -18,7 +18,7 @@ struct LLNode {
 LLNode* LLNode_new(Value item)
 {
     LLNode* node = (LLNode*)malloc(sizeof(LLNode));
-    atomic_store(&node->next, NULL);
+    atomic_init(&node->next, NULL); //TODO moze atomic init?
     node->item = item;
     return node;
 }
@@ -51,29 +51,107 @@ void LLQueue_delete(LLQueue* queue)
 
 void LLQueue_push(LLQueue* queue, Value item)
 {
-    LLNode* node = LLNode_new(item);
+    LLNode* new_last = LLNode_new(item);          //      State B
 
     for (;;) {
-        LLNode* tail = atomic_load(&queue->tail);
-        LLNode* next = atomic_load(&tail->next);
+//        printf("push\n");
+        LLNode* last = atomic_load(&queue->tail); // 1.   State A1
+        LLNode* next = atomic_load(&last->next);  //      State A2
 
-        if (tail == atomic_load(&queue->tail)) {
-            if (next == NULL) {
-                if (atomic_compare_exchange_weak(&tail->next, &next, node)) // TODO check!!!
-                    break;
-            }
+        if (atomic_compare_exchange_strong(&last->next, &next, new_last)) { // 2.   swap state A -> B
+            // 3a.
+            // ZACHODZI -> my zmienilismy next na new_last
+            // NIE ZACHODZI -> komus udalo sie ustawic next na nastepny wezel
+
+
+            // store albo exchange TODO
+            atomic_store(&queue->tail, new_last);
+            break;
         } else {
-            atomic_compare_exchange_weak(&tail, &queue->tail, queue->tail); // TODO check !!!!
+            // 3b.
+
+            // nie my zmienilismy stan, teraz jest stan
+            // C
+            // albo B bo proces mogl zmienic stan ale nie zauktalizowac taila czyli my musimy to naprawic
+
+            atomic_compare_exchange_strong(&queue->tail, &last, last->next); // TODO check
         }
+
+
     }
 }
 
 Value LLQueue_pop(LLQueue* queue)
 {
-    return EMPTY_VALUE; // TODO
+    LLNode* first;
+    Value item;
+    for (;;) {
+        first = atomic_load(&queue->head);  // 1.
+        Value prev_value =  atomic_exchange(&first->item, EMPTY_VALUE);  // 2.
+
+        if (prev_value != EMPTY_VALUE) {
+            // 3a
+
+            // wartosc w pierwszym byla rozna od EMPTY_VALUE
+
+//            printf("zwracamy\n");
+
+
+            if (atomic_load(&queue->head) != first) {
+//                atomic_store(&queue->head, first->next);
+//                printf("hmm\n");
+            }
+
+            return prev_value;
+        } else {
+            // 3b
+
+            // TODO sprawdzamy czy kolejka jest pusta
+            bool is_empty = LLQueue_is_empty(queue);
+
+            if (is_empty) {
+//                printf("pusta\n");
+                return EMPTY_VALUE;
+            } else {
+                // wartosc z pierwszego wezle byla EMPTY_VALUE ale kolejka nie jest pusta
+                if(atomic_compare_exchange_strong(&queue->head, &first, first->next)) {
+//                    printf("przesuwamy head\n");
+                }
+            }
+        }
+    }
+    HazardPointer_retire(&queue->hp, &first);
+    return item;
 }
 
 bool LLQueue_is_empty(LLQueue* queue)
 {
-    return false; // TODO
+    LLNode* first;
+    LLNode* next = NULL;
+
+//    for (;;) {
+//        first = atomic_load(&queue->head);
+//        if (first == atomic_load(&queue->head)) {
+//            return first->next == NULL;
+//        } else {
+//            continue;
+//        }
+//    }
+
+//    for (;;) {
+//        first = atomic_load(&queue->head);  // State A
+//        next = atomic_load(&first->next);   // State B
+//
+//        if (first->next == next) { // State A == B ?
+//            return next == NULL;
+//        } else {
+//            // state are not the same, something happen between loadings
+//            continue;
+//        }
+//    }
+
+    first = atomic_load(&queue->head); // state A
+    return atomic_compare_exchange_strong(&first->next, &next, NULL);
+    // return true if first.next == NULL, swap doest nothing
+    // return false in other case
 }

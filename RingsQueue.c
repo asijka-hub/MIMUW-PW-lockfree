@@ -158,6 +158,7 @@ Value RingsQueue_pop(RingsQueue* queue)
         ret = node_remove_item(new_head);
 
         queue->head = new_head;
+        free(head->buff);
         free(head);
     } else {
         // removing one element from head

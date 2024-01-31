@@ -11,7 +11,9 @@ static const int RETIRED_THRESHOLD = MAX_THREADS;
 typedef uint64_t ull;
 typedef uint8_t u8;
 
-#ifdef DEBUG
+//#define MY_DEBUG
+
+#ifdef MY_DEBUG
     static bool debug = true;
 #else
     static bool debug = false;

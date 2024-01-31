@@ -11,8 +11,15 @@ struct BLNode;
 typedef struct BLNode BLNode;
 typedef _Atomic(BLNode*) AtomicBLNodePtr;
 
+typedef struct BLBuffer {
+    Value data[BUFFER_SIZE];
+} BLBuffer;
+
 struct BLNode {
     AtomicBLNodePtr next;
+    BLBuffer* buffer;
+    atomic_int push_idx;
+    atomic_int pop_idx;
     // TODO
 };
 
@@ -21,19 +28,57 @@ struct BLNode {
 struct BLQueue {
     AtomicBLNodePtr head;
     AtomicBLNodePtr tail;
-    HazardPointer hp;
+    HazardPointer hp; // TODO to chyba trzeba zaalocowac
 };
+
+BLNode* BLNode_new(void) {
+    BLNode* node = (BLNode*)malloc(sizeof(BLNode));
+    CHECK_MALLOC(node);
+
+    BLBuffer* buff = (BLBuffer*) calloc(1, sizeof(BLBuffer)); // TODO sprawdzic to
+    CHECK_MALLOC(node);
+
+
+    node->buffer = buff;
+
+    atomic_init(&node->next, NULL);
+    atomic_init(&node->push_idx, 0);
+    atomic_init(&node->pop_idx, 0);
+
+    return node;
+}
+//
+//void node_add_item(BLNode* node, Value item) {
+//
+//}
 
 BLQueue* BLQueue_new(void)
 {
     BLQueue* queue = (BLQueue*)malloc(sizeof(BLQueue));
-    // TODO
+    CHECK_MALLOC(queue);
+
+    BLNode* dummy = BLNode_new();
+
+    atomic_init(&queue->head, dummy);
+    atomic_init(&queue->tail, dummy);
+
     return queue;
 }
 
 void BLQueue_delete(BLQueue* queue)
 {
-    // TODO
+    for (;;) {
+        BLNode* last = atomic_load(&queue->tail); // 1.
+        int prev_value = atomic_fetch_add(&last->push_idx, 1); // 2
+
+        if (prev_value < BUFFER_SIZE) {
+            // 3a
+        } else {
+            // 3b
+        }
+    }
+
+
     free(queue);
 }
 
