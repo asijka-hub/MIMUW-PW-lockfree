@@ -44,8 +44,7 @@ void node_add_item(RingsQueueNode* const node, const Value value) {
     RingBuffer* const buff = node->buff;
     buff->data[buff->tail] = value;
     buff->tail = (buff->tail + 1 ) % RING_SIZE;
-    ull push_n = atomic_load(&node->push_idx);
-    atomic_store(&node->push_idx, push_n + 1);
+    atomic_fetch_add(&node->push_idx, 1);
 }
 
 /// this function assumes that buff is not EMPTY!
@@ -55,8 +54,7 @@ Value node_remove_item(RingsQueueNode* const node) {
     RingBuffer* const buff = node->buff;
     Value value = buff->data[buff->head];
     buff->head = (buff->head + 1) % RING_SIZE;
-    ull pop_n = atomic_load(&node->pop_idx);
-    atomic_store(&node->pop_idx, pop_n + 1);
+    atomic_fetch_add(&node->pop_idx, 1);
     return value;
 }
 
@@ -103,7 +101,7 @@ RingsQueue* RingsQueue_new(void)
 void RingsQueue_delete(RingsQueue* queue)
 {
     RingsQueueNode* current = queue->head;
-    while (current != NULL) {
+    while (current) {
         RingsQueueNode * next = atomic_load(&current->next);
         free(current->buff);
         free(current);
@@ -175,7 +173,7 @@ Value RingsQueue_pop(RingsQueue* queue)
 bool RingsQueue_is_empty(RingsQueue* queue)
 {
     pthread_mutex_lock(&queue->pop_mtx);
-    bool is_empty = queue->head == queue->tail && node_empty(queue->head);
+    bool is_empty = queue->head == queue->tail && node_empty(queue->head); //TODO check
     pthread_mutex_unlock(&queue->pop_mtx);
     return is_empty;
 }

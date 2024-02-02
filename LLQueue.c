@@ -55,26 +55,34 @@ void LLQueue_push(LLQueue* queue, Value item)
 
     for (;;) {
 //        printf("push\n");
-        LLNode* last = atomic_load(&queue->tail); // 1.   State A1
-        LLNode* next = atomic_load(&last->next);  //      State A2
+        LLNode* old_tail = atomic_load(&queue->tail); // 1.   State A1
+        LLNode* next = NULL;  //      State A2
 
-        if (atomic_compare_exchange_strong(&last->next, &next, new_last)) { // 2.   swap state A -> B
+        if (atomic_compare_exchange_strong(&old_tail->next, &next, new_last)) { // 2.   swap state A -> B
             // 3a.
             // ZACHODZI -> my zmienilismy next na new_last
-            // NIE ZACHODZI -> komus udalo sie ustawic next na nastepny wezel
+            // NIE ZACHODZI -> komus udalo sie ustawic next na nastepny wezel, ale nie przedluzono jeszcze head
 
 
             // store albo exchange TODO
-            atomic_store(&queue->tail, new_last);
+            // TODO chyba exchange?
+
+//            atomic_store(&queue->tail, new_last);
+            atomic_compare_exchange_strong(&queue->tail, &old_tail, new_last);
             break;
         } else {
             // 3b.
+
+            // TUTAJ GDY -> nie udalo nam sie dolozyc nowego, w next mamy snapshot co jest w rzeywisctosci
+            // czyli next != NULL
 
             // nie my zmienilismy stan, teraz jest stan
             // C
             // albo B bo proces mogl zmienic stan ale nie zauktalizowac taila czyli my musimy to naprawic
 
-            atomic_compare_exchange_strong(&queue->tail, &last, last->next); // TODO check
+            atomic_compare_exchange_strong(&queue->tail, &old_tail, next); // TODO check
+            // ZACHODZI gdy tail == old_tail, wtedy zmieniamy tail na next
+            // NIE ZACHODZI gdy tail != old_tail czyli ktos juz aktualizowal tail
         }
 
 
@@ -83,44 +91,43 @@ void LLQueue_push(LLQueue* queue, Value item)
 
 Value LLQueue_pop(LLQueue* queue)
 {
-    LLNode* first;
+    LLNode* old_head;
     Value item;
     for (;;) {
-        first = atomic_load(&queue->head);  // 1.
-        Value prev_value =  atomic_exchange(&first->item, EMPTY_VALUE);  // 2.
+        old_head = atomic_load(&queue->head);  // 1.
+        Value prev_value =  atomic_exchange(&old_head->item, EMPTY_VALUE);  // 2.
 
         if (prev_value != EMPTY_VALUE) {
             // 3a
 
-            // wartosc w pierwszym byla rozna od EMPTY_VALUE
+            // ZACHODZI GDY -> wartosc w pierwszym byla rozna od EMPTY_VALUE, czyli head nie byla na dummy
+            //                 to my dokonalismy zamiany
+            //                 czyli komus udalo sie 4b
 
 //            printf("zwracamy\n");
-
-
-            if (atomic_load(&queue->head) != first) {
-//                atomic_store(&queue->head, first->next);
-//                printf("hmm\n");
-            }
 
             return prev_value;
         } else {
             // 3b
+
+            // ZACHODZI GDY -> HEAD byla na dummy albo ktos juz popchnal head
 
             // TODO sprawdzamy czy kolejka jest pusta
             bool is_empty = LLQueue_is_empty(queue);
 
             if (is_empty) {
 //                printf("pusta\n");
-                return EMPTY_VALUE;
+                return EMPTY_VALUE; // 4a
             } else {
                 // wartosc z pierwszego wezle byla EMPTY_VALUE ale kolejka nie jest pusta
-                if(atomic_compare_exchange_strong(&queue->head, &first, first->next)) {
+                //
+                if(atomic_compare_exchange_strong(&queue->head, &old_head, old_head->next)) { //4b
 //                    printf("przesuwamy head\n");
                 }
             }
         }
     }
-    HazardPointer_retire(&queue->hp, &first);
+    HazardPointer_retire(&queue->hp, &old_head);
     return item;
 }
 
@@ -128,27 +135,6 @@ bool LLQueue_is_empty(LLQueue* queue)
 {
     LLNode* first;
     LLNode* next = NULL;
-
-//    for (;;) {
-//        first = atomic_load(&queue->head);
-//        if (first == atomic_load(&queue->head)) {
-//            return first->next == NULL;
-//        } else {
-//            continue;
-//        }
-//    }
-
-//    for (;;) {
-//        first = atomic_load(&queue->head);  // State A
-//        next = atomic_load(&first->next);   // State B
-//
-//        if (first->next == next) { // State A == B ?
-//            return next == NULL;
-//        } else {
-//            // state are not the same, something happen between loadings
-//            continue;
-//        }
-//    }
 
     first = atomic_load(&queue->head); // state A
     return atomic_compare_exchange_strong(&first->next, &next, NULL);
