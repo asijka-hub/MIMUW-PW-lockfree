@@ -6,8 +6,17 @@
 #include <stdlib.h>
 #include <assert.h>
 
-#include "HazardPointer.h"
 #include "RingsQueue.h"
+
+typedef uint64_t ull;
+
+#define CHECK_MALLOC(ptr) \
+    do { \
+        if ((ptr) == NULL) { \
+            fprintf(stderr, "Memory allocation failed at %s:%d\n", __FILE__, __LINE__); \
+            exit(EXIT_FAILURE); \
+        } \
+    } while (0)
 
 struct RingsQueueNode;
 typedef struct RingsQueueNode RingsQueueNode;
@@ -32,6 +41,7 @@ bool node_full(RingsQueueNode* node) {
 }
 
 bool node_empty(RingsQueueNode* node) {
+    if (node == NULL) printf("KDKDK\n");
     ull push_n = atomic_load(&node->push_idx);
     ull pop_n = atomic_load(&node->pop_idx);
     return (push_n - pop_n == 0);
@@ -39,7 +49,7 @@ bool node_empty(RingsQueueNode* node) {
 
 /// this function assumes that buff is not FULL!
 void node_add_item(RingsQueueNode* const node, const Value value) {
-    DEBUG(assert(!node_full(node)));
+//    assert(!node_full(node));
 
     RingBuffer* const buff = node->buff;
     buff->data[buff->tail] = value;
@@ -49,7 +59,7 @@ void node_add_item(RingsQueueNode* const node, const Value value) {
 
 /// this function assumes that buff is not EMPTY!
 Value node_remove_item(RingsQueueNode* const node) {
-    DEBUG(assert(!node_empty(node)));
+//    assert(!node_empty(node));
 
     RingBuffer* const buff = node->buff;
     Value value = buff->data[buff->head];
@@ -58,7 +68,6 @@ Value node_remove_item(RingsQueueNode* const node) {
     return value;
 }
 
-// TODO RingsQueueNode_new
 RingsQueueNode* RingsQueueNode_new(void) {
     RingsQueueNode* node = (RingsQueueNode*)malloc(sizeof(RingsQueueNode));
     CHECK_MALLOC(node);
@@ -121,8 +130,7 @@ void RingsQueue_push(RingsQueue* queue, Value item)
     RingsQueueNode* const tail = queue->tail;
 
     if (node_full(tail)) {
-        // adding new node
-        // and inserting value into it
+        // adding new node and inserting value into it
 
         RingsQueueNode* const new_node = RingsQueueNode_new();
         node_add_item(new_node, item);
@@ -131,7 +139,6 @@ void RingsQueue_push(RingsQueue* queue, Value item)
         queue->tail = new_node;
     } else {
         // inserting item into existing
-//        printf("inserting item\n");
 
         node_add_item(tail, item);
     }
@@ -153,15 +160,19 @@ Value RingsQueue_pop(RingsQueue* queue)
         // removing node and taking return value from next
 
         RingsQueueNode* new_head = atomic_load(&head->next);
-        ret = node_remove_item(new_head);
 
+        if (new_head == NULL) {
+            pthread_mutex_unlock(&queue->pop_mtx);
+            return EMPTY_VALUE;
+        }
+
+        ret = node_remove_item(new_head);
         queue->head = new_head;
         free(head->buff);
         free(head);
     } else {
         // removing one element from head
-//        printf("removing one item from existing\n");
-
+        if (head == NULL) printf("e2\n");
         ret = node_remove_item(head);
     }
 

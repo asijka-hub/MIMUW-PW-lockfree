@@ -47,7 +47,7 @@ typedef uint8_t u8;
 
 struct HazardPointer {
     _Atomic(void*) pointer[MAX_THREADS];
-    void* retired[MAX_THREADS][MAX_THREADS];
+    void* retired[MAX_THREADS][MAX_THREADS + 1];
     u8 retired_n[MAX_THREADS];
     // TODO
 };

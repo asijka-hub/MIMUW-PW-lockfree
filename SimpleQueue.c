@@ -16,9 +16,9 @@ struct SimpleQueueNode {
 SimpleQueueNode* SimpleQueueNode_new(Value item)
 {
     SimpleQueueNode* node = (SimpleQueueNode*)malloc(sizeof(SimpleQueueNode));
-//    if (node == NULL) {
-//        exit(EXIT_FAILURE);
-//    }
+    if (node == NULL) {
+        exit(EXIT_FAILURE);
+    }
     atomic_init(&node->next, NULL);
     node->item = item;
     return node;
@@ -35,7 +35,7 @@ SimpleQueue* SimpleQueue_new(void)
 {
     SimpleQueue* queue = (SimpleQueue*)malloc(sizeof(SimpleQueue));
     if (queue == NULL) {
-        exit(EXIT_FAILURE); //TODO czy to ma sens
+        exit(EXIT_FAILURE);
     }
 
     SimpleQueueNode* dummy = SimpleQueueNode_new(EMPTY_VALUE);
@@ -68,9 +68,6 @@ void SimpleQueue_push(SimpleQueue* queue, Value item)
 {
     SimpleQueueNode* node = SimpleQueueNode_new(item);
 
-    assert(node != NULL);
-    assert(queue != NULL);
-
     pthread_mutex_lock(&queue->tail_mtx);
 
     atomic_store(&queue->tail->next, node);
@@ -81,8 +78,6 @@ void SimpleQueue_push(SimpleQueue* queue, Value item)
 
 Value SimpleQueue_pop(SimpleQueue* queue)
 {
-    assert(queue != NULL);
-
     pthread_mutex_lock(&queue->head_mtx);
 
     SimpleQueueNode* head = queue->head;
@@ -107,12 +102,6 @@ Value SimpleQueue_pop(SimpleQueue* queue)
 
 bool SimpleQueue_is_empty(SimpleQueue* queue)
 {
-//    pthread_mutex_lock(&queue->head_mtx);
-//    bool is_empty = queue->head == queue->tail;
-//    pthread_mutex_unlock(&queue->head_mtx);
-//    return is_empty;
-
-    // TODO porownac obie wersie
     SimpleQueueNode* node = atomic_load(&queue->head->next);
     return node == NULL;
 }

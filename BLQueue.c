@@ -3,6 +3,7 @@
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
+#include <string.h>
 
 #include <assert.h>
 
@@ -13,35 +14,24 @@ struct BLNode;
 typedef struct BLNode BLNode;
 typedef _Atomic(BLNode*) AtomicBLNodePtr;
 
-typedef struct BLBuffer {
-    Value data[BUFFER_SIZE];
-} BLBuffer;
-
 struct BLNode {
     AtomicBLNodePtr next;
-    BLBuffer* buffer;
+    _Atomic(Value) data[BUFFER_SIZE];
     atomic_int push_idx;
     atomic_int pop_idx;
-    // TODO
 };
-
-// TODO BLNode_new
 
 struct BLQueue {
     AtomicBLNodePtr head;
     AtomicBLNodePtr tail;
-    HazardPointer hp; // TODO to chyba trzeba zaalocowac
+    HazardPointer hp;
 };
 
 BLNode* BLNode_new(void) {
     BLNode* node = (BLNode*)malloc(sizeof(BLNode));
     CHECK_MALLOC(node);
 
-    BLBuffer* buff = (BLBuffer*) calloc(1, sizeof(BLBuffer)); // TODO sprawdzic to
-    CHECK_MALLOC(node);
-
-
-    node->buffer = buff;
+    memset(node->data, 0, sizeof(node->data));
 
     atomic_init(&node->next, NULL);
     atomic_init(&node->push_idx, 0);
@@ -54,11 +44,8 @@ BLNode* BLNode_with_item(Value item) {
     BLNode* node = (BLNode*)malloc(sizeof(BLNode));
     CHECK_MALLOC(node);
 
-    BLBuffer* buff = (BLBuffer*) calloc(1, sizeof(BLBuffer)); // TODO sprawdzic to
-    CHECK_MALLOC(node);
-
-    node->buffer = buff;
-    node->buffer->data[0] = item;
+    memset(node->data, 0, sizeof(node->data));
+    atomic_init(&node->data[0], item);
 
     atomic_init(&node->next, NULL);
     atomic_init(&node->push_idx, 1);
@@ -71,6 +58,8 @@ BLQueue* BLQueue_new(void)
 {
     BLQueue* queue = (BLQueue*)malloc(sizeof(BLQueue));
     CHECK_MALLOC(queue);
+
+    HazardPointer_initialize(&queue->hp);
 
     BLNode* dummy = BLNode_new();
 
@@ -85,12 +74,11 @@ void BLQueue_delete(BLQueue* queue)
 {
     BLNode * current = queue->head;
     while (current) {
-        BLNode * next = atomic_load(&current->next);
-        free(current->buffer);
+        BLNode* next = atomic_load(&current->next);
         free(current);
         current = next;
     }
-
+    HazardPointer_finalize(&queue->hp);
     free(queue);
 }
 
@@ -98,24 +86,22 @@ void BLQueue_push(BLQueue* queue, Value item)
 {
     Value empty_value = EMPTY_VALUE;
     BLNode* next = NULL;
+    BLNode* old_tail;
 
     for (;;) {
         next = NULL;
         empty_value = EMPTY_VALUE;
-        BLNode* old_tail = atomic_load(&queue->tail); // 1.
+        old_tail = HazardPointer_protect(&queue->hp, &queue->tail);
         int prev_idx = atomic_fetch_add(&old_tail->push_idx, 1); // 2
-//        printf("prev_idx: %d\n", prev_idx);
 
         if (prev_idx < BUFFER_SIZE) {
             // 3a
 
-            if (atomic_compare_exchange_strong(&(old_tail->buffer->data[prev_idx]), &empty_value, item)) {
-//                printf("wtawilismy1: %d\n", item);
+            if (atomic_compare_exchange_strong(&old_tail->data[prev_idx], &empty_value, item)) {
                 return;
             }
         } else {
             // 3b
-
             // czy zostal utworzony wezel
 
             if (atomic_compare_exchange_strong(&old_tail->next, &next, NULL)) {
@@ -128,14 +114,11 @@ void BLQueue_push(BLQueue* queue, Value item)
                 if (atomic_compare_exchange_strong(&old_tail->next, &next, new_node)) {
                     // przedluzanie sie udalo
 
-//                    printf("wtawilismy2: %d\n", item);
-//                    atomic_store(&queue->tail, new_node);
-                    atomic_compare_exchange_strong(&queue->tail, &old_tail, new_node);
+                atomic_compare_exchange_strong(&queue->tail, &old_tail, new_node);
                     return;
                 } else {
                     // przedluzanie sie nie udalo
 
-                    free(new_node->buffer);
                     free(new_node);
                 }
             } else {
@@ -156,12 +139,12 @@ Value BLQueue_pop(BLQueue* queue)
 
 
     for (;;) {
-        old_head = atomic_load(&queue->head); // 1.
+        old_head = HazardPointer_protect(&queue->hp, &queue->head);
         next = NULL;
         int prev_idx = atomic_fetch_add(&old_head->pop_idx, 1); // 2
 
         if (prev_idx < BUFFER_SIZE) { // 3a.
-            old_val = atomic_exchange(&old_head->buffer->data[prev_idx], TAKEN_VALUE);
+            old_val = atomic_exchange(&old_head->data[prev_idx], TAKEN_VALUE);
 
             if (old_val == EMPTY_VALUE) {
                 continue;
@@ -176,8 +159,9 @@ Value BLQueue_pop(BLQueue* queue)
 
             } else {
                 // 4a w next mamy nastepny
-                atomic_compare_exchange_strong(&queue->head, &old_head, next);
-
+                if (atomic_compare_exchange_strong(&queue->head, &old_head, next)) {
+                    HazardPointer_retire(&queue->hp, old_head);
+                }
             }
         }
     }
